@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#fbf3e7">
+<title>时间计算辅助</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   时间计算辅助 · 临床清绿版（仅日间）
+   干净白卡 / 医疗墨绿强调 · 字体清晰 · 手机优先
+   结果下方附推算区间日历，高亮推算天数便于核对
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+  --bg:        #fbf3e7;        /* 暖米底 */
+  --card:      #ffffff;        /* 干净白卡 */
+  --card-2:    #fef8ef;
+  --ink:       #211a12;        /* 暖深墨正文 (≈14:1) */
+  --ink-dim:   #6b5d4c;        /* 标签 (≈6.4:1) */
+  --ink-faint: #a99b85;        /* 装饰/非本月 */
+  --accent:    #b0560c;        /* 烧橙 (白字 5.0:1) */
+  --accent-2:  #944a08;        /* 悬停深橙 */
+  --band:      #f3b15a;        /* 推算区间橙底（明显） */
+  --hair:      rgba(33,26,18,.12);
+  --hair-a:    rgba(176,86,12,.30);
+  --glow:      rgba(176,86,12,.22);
+  --shadow:    0 1px 2px rgba(33,26,18,.04), 0 10px 26px -14px rgba(120,60,10,.20);
+  --font-sans: 'Hanken Grotesk','Noto Sans SC',sans-serif;
+  --font-serif:'Noto Serif SC',serif;
+  --font-cn:   'Noto Sans SC','Hanken Grotesk',sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  display: flex;
+  justify-content: center;
+  padding:
+    max(14px, env(safe-area-inset-top))
+    max(14px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom))
+    max(14px, env(safe-area-inset-left));
+  min-height: 100dvh;
+  line-height: 1.45;
+}
+
+.app { width: 100%; max-width: 480px; }
+
+/* ---- 顶栏 ---- */
+.topbar {
+  padding: 8px 4px 16px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 18px;
+  text-align: center;
+}
+.topbar .title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: .08em;
+  color: var(--ink);
+}
+
+/* ---- 卡片 ---- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 18px 16px;
+  box-shadow: var(--shadow);
+}
+.field { margin-bottom: 18px; }
+.field:last-child { margin-bottom: 0; }
+
+.lbl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: .04em;
+  color: var(--ink-dim);
+}
+.lbl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.field > .lbl, .field > .lbl-row { margin-bottom: 8px; }
+.now {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--hair-a);
+  border-radius: 6px;
+  padding: 0 12px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: background .18s;
+}
+.now:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.now:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+input[type="datetime-local"],
+input[type="number"] {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--card-2);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 13px 12px;
+  min-height: 48px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="datetime-local"]::-webkit-calendar-picker-indicator { cursor: pointer; }
+input::placeholder { color: var(--ink-dim); opacity: 1; }
+input[type="datetime-local"]:focus,
+input[type="number"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+input.err { border-color: var(--accent) !important; animation: shake .35s; }
+@keyframes shake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-5px);} 75%{transform:translateX(5px);} }
+
+/* 数量行 */
+.qty { display: flex; flex-direction: column; gap: 8px; }
+.unit {
+  align-self: flex-start;
+  display: inline-flex;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.unit input { position: absolute; opacity: 0; pointer-events: none; }
+.unit input:focus-visible + label { box-shadow: 0 0 0 2px var(--accent); z-index: 1; }
+.unit label {
+  font-family: var(--font-cn);
+  font-weight: 500;
+  font-size: 14px;
+  padding: 0 18px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--ink-dim);
+  transition: all .18s;
+}
+.unit input:checked + label { color: #fff; background: var(--accent); }
+
+.presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.preset {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .16s;
+}
+.preset:hover { color: var(--ink); border-color: var(--ink-dim); }
+.preset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.preset.active { color: var(--accent-2); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* 计算按钮 */
+.calc {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-family: var(--font-cn);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: .3em;
+  text-indent: .3em;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  padding: 15px 0;
+  min-height: 50px;
+  cursor: pointer;
+  transition: filter .2s, transform .1s, box-shadow .2s, background .2s;
+}
+.calc:hover { filter: brightness(1.06); background: var(--accent-2); box-shadow: 0 8px 22px -8px var(--glow); }
+.calc:active { transform: scale(.97); }
+.calc:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* ---- 结果卡 ---- */
+.result {
+  margin-top: 16px;
+  background: linear-gradient(180deg, var(--card), var(--card-2));
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 24px 18px 18px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.result::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.r-date {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(1.7rem, 9vw, 2.4rem);
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.r-time {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: clamp(1.2rem, 6vw, 1.6rem);
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+  margin-top: 6px;
+  white-space: nowrap;
+}
+.r-wk {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: clamp(1.3rem, 7vw, 1.8rem);
+  letter-spacing: .22em;
+  color: var(--accent);
+  margin-top: 12px;
+}
+.r-foot {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-dim);
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hair);
+  min-height: 1.4em;
+}
+.copy {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 0;
+  min-height: 44px;
+  cursor: pointer;
+  transition: all .18s;
+}
+.copy:disabled { opacity: .4; cursor: not-allowed; }
+.copy:not(:disabled):hover { color: var(--accent); border-color: var(--hair-a); }
+.copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.copy.copied { color: var(--accent); border-color: var(--accent); }
+
+/* 结果显影：分阶渗入 */
+.app.computing .r-date  { animation: reveal .45s both cubic-bezier(.2,.7,.2,1); }
+.app.computing .r-time { animation: reveal .45s both; animation-delay: .08s; }
+.app.computing .r-wk   { animation: reveal .5s  both; animation-delay: .16s; }
+.app.computing .r-foot { animation: reveal .4s  both; animation-delay: .24s; }
+@keyframes reveal {
+  0%   { opacity: .25; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 入场：分阶上浮（结果与日历首次计算后才升起） */
+.topbar, .card, .disclaimer { animation: enter .55s both cubic-bezier(.2,.7,.2,1); }
+.card { animation-delay: .07s; }
+.disclaimer { animation-delay: .14s; }
+@keyframes enter {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 首次计算前隐藏结果与日历；计算后分阶升起 */
+.app:not(.computed) .result,
+.app:not(.computed) .cal-wrap { display: none; }
+.app.computed .result { animation: rise-in .55s both cubic-bezier(.2,.7,.2,1); }
+.app.computed .cal-wrap { animation: rise-in .55s both cubic-bezier(.2,.7,.2,1); animation-delay: .12s; }
+@keyframes rise-in {
+  0%   { opacity: 0; transform: translateY(18px) scale(.985); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 月份日历：逐月渗入 */
+.month { animation: month-in .32s both cubic-bezier(.2,.7,.2,1); }
+.month:nth-child(2) { animation-delay: .06s; }
+.month:nth-child(3) { animation-delay: .12s; }
+.month:nth-child(4) { animation-delay: .18s; }
+.month:nth-child(5) { animation-delay: .24s; }
+.month:nth-child(6) { animation-delay: .30s; }
+.month:nth-child(n+7) { animation-delay: .36s; }
+@keyframes month-in {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 微反馈 */
+.preset.active { animation: pop .25s ease-out; }
+.copy.copied { animation: pop .3s ease-out; }
+@keyframes pop { 0%{transform:scale(1);} 45%{transform:scale(1.08);} 100%{transform:scale(1);} }
+.cell:not(:empty):not(.end):not(.start):hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .app.computing .r-date, .app.computing .r-time, .app.computing .r-wk, .app.computing .r-foot,
+  .topbar, .card, .result, .cal-wrap, .disclaimer, .month, .preset.active, .copy.copied, input.err {
+    animation: none !important;
+  }
+  .calc, .preset, .copy, .now, .cell, .unit label,
+  input[type="datetime-local"], input[type="number"] { transition: none !important; }
+}
+
+/* ---- 推算区间日历 ---- */
+.cal-wrap { margin-top: 16px; }
+.cal-head {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  margin-bottom: 12px;
+}
+.cal-title {
+  font-family: var(--font-cn);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink-dim);
+  letter-spacing: .04em;
+}
+.cal-range {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.cal-legend {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.dot-start { background: var(--card); border: 2px solid var(--accent); }
+.dot-end { background: var(--accent); }
+.dot-band { background: var(--band); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+
+.cal-body:empty::before {
+  content: '计算后显示推算区间日历';
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.month { margin-bottom: 16px; }
+.month:last-child { margin-bottom: 0; }
+.month-name {
+  text-align: center;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-dow {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-dim);
+  text-align: center;
+  padding-bottom: 4px;
+}
+.cell {
+  aspect-ratio: 1 / 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  border-radius: 7px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  background: transparent;
+  transition: background .15s;
+}
+.cell .num { line-height: 1; }
+.cell .tag {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 3px;
+}
+.cell.we { background: var(--bg); }
+.cell.band { background: var(--band); color: var(--ink); font-weight: 600; }
+.cell.start { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); font-weight: 600; }
+.cell.start .tag { color: var(--accent); }
+.cell.end { background: var(--accent); color: #fff; font-weight: 600; }
+.cell.end .tag { color: #fff; }
+.cell.today::after {
+  content: '';
+  position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: var(--ink-dim);
+}
+
+/* ---- 免责 ---- */
+.disclaimer {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--ink-dim);
+  text-align: center;
+  margin-top: 16px;
+  padding: 0 8px;
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap; border: 0;
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <span class="title">时间推算器</span>
+  </header>
+
+  <main class="card">
+    <div class="field">
+      <div class="lbl-row">
+        <label class="lbl" for="timeA">时间A · 基准时刻</label>
+        <button type="button" class="now" id="nowBtn">现在</button>
+      </div>
+      <input type="datetime-local" id="timeA" aria-label="基准时刻 时间A">
+    </div>
+
+    <div class="field">
+      <div class="lbl">数量 · 推算</div>
+      <div class="qty">
+        <div class="unit" role="radiogroup" aria-label="单位">
+          <input type="radio" id="u-day" name="unit" value="day" checked>
+          <label for="u-day">天</label>
+          <input type="radio" id="u-month" name="unit" value="month">
+          <label for="u-month">月</label>
+        </div>
+        <div class="presets" id="presets"></div>
+        <input type="number" id="qty" min="0" inputmode="numeric" placeholder="自定数量" aria-label="推算数量">
+      </div>
+    </div>
+
+    <button type="button" class="calc" id="computeBtn">计 算</button>
+  </main>
+
+  <div class="sr-only" aria-live="polite" id="liveStatus"></div>
+  <section class="result" id="result">
+    <div class="r-date" id="dateOut">——————————</div>
+    <div class="r-time" id="timeOut">——:——:——</div>
+    <div class="r-wk" id="wkOut">星期 —</div>
+    <div class="r-foot" id="footnote">待机 · 等待计算</div>
+    <button type="button" class="copy" id="copyBtn" disabled>复制结果</button>
+  </section>
+
+  <section class="card cal-wrap">
+    <div class="cal-head">
+      <span class="cal-title">推算区间日历</span>
+      <span class="cal-range" id="calRange"></span>
+      <div class="cal-legend">
+        <span><span class="dot dot-start" aria-hidden="true"></span>起点</span>
+        <span><span class="dot dot-end" aria-hidden="true"></span>终点</span>
+        <span><span class="dot dot-band" aria-hidden="true"></span>推算天数</span>
+      </div>
+    </div>
+    <div class="cal-body" id="calBody" aria-hidden="true"></div>
+  </section>
+
+  <p class="disclaimer">本结果仅作辅助参考 · 处方核对为准</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var PRESETS = { day: [28, 30, 60, 90], month: [1, 3, 6, 12] };
+  var WK_FULL = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  var WK_SHORT = ['日','一','二','三','四','五','六'];
+  var DOW = ['一','二','三','四','五','六','日'];
+  var COPY_ORIG = '复制结果';
+
+  var lastResult = null;
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function nowLocalValue() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+           'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function formatDate(y, m, d) { return y + '-' + pad(m) + '-' + pad(d); }
+  function formatTime(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+  // 时区安全的日期序数（仅按年月日比较）
+  function dayOrd(d) { return d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate(); }
+
+  // 月份加法 · 周年式：原日超过目标月天数则收束到月末（如 1.31 + 1 月 → 2.28/29）
+  function addMonths(date, n) {
+    var d = new Date(date);
+    var day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + n);
+    var dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, dim));
+    return d;
+  }
+
+  function flashError(el) {
+    el.classList.add('err');
+    setTimeout(function () { el.classList.remove('err'); }, 400);
+  }
+  function saveState() {
+    try {
+      localStorage.setItem('mtc-qty', $('qty').value);
+      localStorage.setItem('mtc-unit', document.querySelector('input[name=unit]:checked').value);
+    } catch (e) {}
+  }
+
+  function renderPresets() {
+    var unit = document.querySelector('input[name=unit]:checked').value;
+    var cont = $('presets');
+    cont.innerHTML = '';
+    PRESETS[unit].forEach(function (v) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'preset'; b.dataset.v = String(v);
+      b.textContent = String(v);
+      b.addEventListener('click', function () {
+        $('qty').value = v;
+        cont.querySelectorAll('.preset').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        saveState();
+      });
+      cont.appendChild(b);
+    });
+    syncPresetActive();
+  }
+  function syncPresetActive() {
+    var cur = $('qty').value;
+    document.querySelectorAll('.preset').forEach(function (x) {
+      x.classList.toggle('active', x.dataset.v === cur);
+    });
+  }
+
+  function compute() {
+    var timeA = $('timeA'), qtyEl = $('qty');
+    if (!timeA.value) { flashError(timeA); return; }
+    var start = new Date(timeA.value);
+    if (isNaN(start.getTime())) { flashError(timeA); return; }
+
+    var raw = qtyEl.value.trim();
+    var qty = Number(raw);
+    if (raw === '' || !isFinite(qty) || qty < 0 || Math.floor(qty) !== qty) { flashError(qtyEl); return; }
+
+    var unit = document.querySelector('input[name=unit]:checked').value;
+    var target = (unit === 'month') ? addMonths(start, qty) : new Date(start);
+    if (unit === 'day') target.setDate(target.getDate() + qty);
+    if (isNaN(target.getTime())) { flashError(qtyEl); return; }
+
+    renderResult(start, target, qty, unit);
+  }
+
+  function renderResult(start, target, qty, unit) {
+    var dateStr = formatDate(target.getFullYear(), target.getMonth() + 1, target.getDate());
+    var timeStr = formatTime(target);
+    var wkIdx = target.getDay();
+    var wk = WK_FULL[wkIdx];
+    var wkS = WK_SHORT[wkIdx];
+
+    $('dateOut').textContent = dateStr;
+    $('timeOut').textContent = timeStr;
+    $('wkOut').textContent = wk;
+
+    var startStr = formatDate(start.getFullYear(), start.getMonth() + 1, start.getDate());
+    var startTime = formatTime(start);
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var tMid = new Date(target); tMid.setHours(0, 0, 0, 0);
+    var delta = Math.round((tMid - today) / 86400000);
+    var deltaStr = delta === 0 ? '即今日' : (delta > 0 ? '距今 ' + delta + ' 天' : '已过去 ' + (-delta) + ' 天');
+    var unitName = (unit === 'month') ? '月' : '天';
+    $('footnote').textContent = '自 ' + startStr + ' ' + startTime + ' 起 · 推 ' + qty + unitName + ' · 周' + wkS + ' · ' + deltaStr;
+
+    lastResult = { stamp: dateStr + ' ' + timeStr, wk: wk };
+    $('copyBtn').disabled = false;
+    $('liveStatus').textContent = dateStr + ' ' + timeStr + ' ' + wk;
+
+    var app = document.querySelector('.app');
+    var first = !app.classList.contains('computed');
+    app.classList.add('computed');            // 首次计算：升起显示结果与日历
+    renderCalendar(start, target);            // 升起后再渲染日历，月份渗入动效正常播放
+
+    app.classList.remove('computing');
+    if (!first) { void app.offsetWidth; app.classList.add('computing'); }  // 后续计算：子级分阶渗入
+  }
+
+  /* ---------- 推算区间日历 ---------- */
+  function renderCalendar(start, target) {
+    var sShort = formatDate(start.getFullYear(), start.getMonth() + 1, start.getDate());
+    var tShort = formatDate(target.getFullYear(), target.getMonth() + 1, target.getDate());
+    var sWk = WK_SHORT[start.getDay()];
+    var tWk = WK_SHORT[target.getDay()];
+    $('calRange').textContent = sShort + ' 周' + sWk + ' → ' + tShort + ' 周' + tWk;
+
+    var body = $('calBody');
+    body.innerHTML = '';
+
+    var sOrd = dayOrd(start), tOrd = dayOrd(target);
+    var todayOrd = dayOrd(new Date());
+
+    var y = start.getFullYear(), m = start.getMonth();
+    var ey = target.getFullYear(), em = target.getMonth();
+    while (y < ey || (y === ey && m <= em)) {
+      body.appendChild(renderMonth(y, m, sOrd, tOrd, todayOrd));
+      m++; if (m > 11) { m = 0; y++; }
+    }
+  }
+
+  function renderMonth(y, m, sOrd, tOrd, todayOrd) {
+    var wrap = document.createElement('div');
+    wrap.className = 'month';
+
+    var name = document.createElement('div');
+    name.className = 'month-name';
+    name.textContent = y + '年' + (m + 1) + '月';
+    wrap.appendChild(name);
+
+    var grid = document.createElement('div');
+    grid.className = 'cal-grid';
+    DOW.forEach(function (d) {
+      var e = document.createElement('div');
+      e.className = 'cal-dow';
+      e.textContent = d;
+      grid.appendChild(e);
+    });
+
+    var first = new Date(y, m, 1);
+    var firstCol = (first.getDay() + 6) % 7;          // 周一首列
+    var days = new Date(y, m + 1, 0).getDate();       // 本月天数
+    var prevDays = new Date(y, m, 0).getDate();       // 上月天数（用于前置补格）
+
+    var i;
+    for (i = firstCol - 1; i >= 0; i--) {             // 前置（上月尾日，灰）
+      grid.appendChild(makeCell(new Date(y, m - 1, prevDays - i), true, sOrd, tOrd, todayOrd));
+    }
+    for (var d = 1; d <= days; d++) {                  // 本月
+      grid.appendChild(makeCell(new Date(y, m, d), false, sOrd, tOrd, todayOrd));
+    }
+    var used = firstCol + days;
+    var trailing = (7 - (used % 7)) % 7;              // 补满末行
+    for (i = 1; i <= trailing; i++) {
+      grid.appendChild(makeCell(new Date(y, m + 1, i), true, sOrd, tOrd, todayOrd));
+    }
+
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  function makeCell(date, oob, sOrd, tOrd, todayOrd) {
+    var n = date.getDate();
+    var dow = date.getDay();
+    var cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.title = formatDate(date.getFullYear(), date.getMonth() + 1, n) + ' 周' + WK_SHORT[dow];
+    if (oob) return cell;                             // 跨月补位：留空，日期在其自身月块呈现
+
+    var ord = dayOrd(date);
+    var isWeekend = (dow === 0 || dow === 6);
+    var isStart = (ord === sOrd);
+    var isEnd = (ord === tOrd);
+    var inBand = (ord > sOrd && ord <= tOrd);         // 推算天数 = 起点+1 .. 终点
+    var isToday = (ord === todayOrd);
+
+    if (isWeekend) cell.classList.add('we');
+    if (inBand) cell.classList.add('band');
+    if (isStart && !isEnd) cell.classList.add('start');
+    else if (isEnd) cell.classList.add('end');
+    if (isToday && !isStart && !isEnd) cell.classList.add('today');
+
+    var tag = '';
+    if (isStart && isEnd) tag = '起·止';
+    else if (isStart) tag = '起';
+    else if (isEnd) tag = '止';
+    cell.innerHTML = '<span class="num">' + n + '</span>' + (tag ? '<span class="tag">' + tag + '</span>' : '');
+    return cell;
+  }
+
+  function copyResult() {
+    if (!lastResult) return;
+    var btn = $('copyBtn');
+    if (btn.dataset.busy === '1') return;
+    btn.dataset.busy = '1';
+    var text = lastResult.stamp + ' ' + lastResult.wk;
+    var done = function () {
+      btn.classList.add('copied');
+      btn.textContent = '已复制';
+      setTimeout(function () { btn.classList.remove('copied'); btn.textContent = COPY_ORIG; btn.dataset.busy = '0'; }, 1300);
+    };
+    var fail = function () {
+      btn.textContent = '复制失败';
+      setTimeout(function () { btn.textContent = COPY_ORIG; btn.dataset.busy = '0'; }, 1300);
+    };
+    function fallbackCopy() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { done(); } else { fail(); }
+      } catch (e) { fail(); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallbackCopy);
+    } else { fallbackCopy(); }
+  }
+
+  function init() {
+    try {
+      var sq = localStorage.getItem('mtc-qty');
+      var su = localStorage.getItem('mtc-unit');
+      if (sq) $('qty').value = sq;
+      if (su === 'month') $('u-month').checked = true;
+    } catch (e) {}
+    renderPresets();
+    $('timeA').value = nowLocalValue();
+
+    $('nowBtn').addEventListener('click', function () { $('timeA').value = nowLocalValue(); $('timeA').focus(); });
+    $('u-day').addEventListener('change', function () { renderPresets(); saveState(); });
+    $('u-month').addEventListener('change', function () { renderPresets(); saveState(); });
+    $('qty').addEventListener('input', function () { syncPresetActive(); saveState(); });
+    $('computeBtn').addEventListener('click', compute);
+    $('copyBtn').addEventListener('click', copyResult);
+    $('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); compute(); } });
+    $('timeA').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); compute(); } });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
